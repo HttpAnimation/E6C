@@ -1,0 +1,1 @@
+clang -o E6CMac E6CMac.c
