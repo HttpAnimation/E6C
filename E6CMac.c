@@ -1,110 +1,60 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <curl/curl.h>
 
-#define API_URL "https://e621.net/posts.json"
-#define USER_AGENT "YourUserAgent/1.0 (by YourUsername on e621)"
-#define API_KEY "YourAPIKeyHere"
+#define MAX_URL_LENGTH 1024
+#define MAX_COMMAND_LENGTH 2048
 
-// Struct to store response data from libcurl
-struct MemoryStruct {
-    char *memory;
-    size_t size;
-};
-
-// Callback function to write response data from libcurl
-static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp) {
-    size_t realsize = size * nmemb;
-    struct MemoryStruct *mem = (struct MemoryStruct *)userp;
-
-    char *ptr = realloc(mem->memory, mem->size + realsize + 1);
-    if(ptr == NULL) {
-        // Out of memory
-        printf("Not enough memory (realloc returned NULL)\n");
-        return 0;
-    }
-
-    mem->memory = ptr;
-    memcpy(&(mem->memory[mem->size]), contents, realsize);
-    mem->size += realsize;
-    mem->memory[mem->size] = 0;
-
-    return realsize;
+void downloadFile(char *url) {
+    char command[MAX_COMMAND_LENGTH];
+    sprintf(command, "wget -q \"%s\"", url);
+    system(command);
 }
 
-// Function to perform GET request using libcurl
-CURLcode performGetRequest(const char *url, struct MemoryStruct *chunk, const char *authHeader) {
-    CURL *curl_handle;
-    CURLcode res;
+int main() {
+    char searchQuery[MAX_URL_LENGTH];
+    printf("Enter search query: ");
+    fgets(searchQuery, sizeof(searchQuery), stdin);
+    searchQuery[strcspn(searchQuery, "\n")] = 0; // Remove newline character
 
-    curl_handle = curl_easy_init();
-    if(curl_handle) {
-        curl_easy_setopt(curl_handle, CURLOPT_URL, url);
-        curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
-        curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)chunk);
+    // Format the search query to be URL friendly
+    char formattedSearchQuery[MAX_URL_LENGTH];
+    sprintf(formattedSearchQuery, "\"%s\"", searchQuery);
 
-        // Set user agent and authorization header
-        struct curl_slist *headers = NULL;
-        headers = curl_slist_append(headers, USER_AGENT);
-        if (authHeader)
-            headers = curl_slist_append(headers, authHeader);
-        curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+    // Construct the API URL
+    char apiUrl[MAX_URL_LENGTH];
+    sprintf(apiUrl, "https://e621.net/posts.json?limit=320&tags=%s", formattedSearchQuery);
 
-        // Perform the request
-        res = curl_easy_perform(curl_handle);
+    // Fetch post information from API
+    char command[MAX_COMMAND_LENGTH];
+    sprintf(command, "curl -s \"%s\"", apiUrl);
+    FILE *apiOutput = popen(command, "r");
 
-        // Clean up
-        curl_easy_cleanup(curl_handle);
-        curl_slist_free_all(headers);
-
-        return res;
+    char postInfo[MAX_COMMAND_LENGTH];
+    char postURL[MAX_URL_LENGTH];
+    while (fgets(postInfo, sizeof(postInfo), apiOutput) != NULL) {
+        // Parse the post URL from the API response
+        char *start = strstr(postInfo, "\"file\":{\"url\":\"");
+        if (start != NULL) {
+            start += strlen("\"file\":{\"url\":\"");
+            char *end = strstr(start, "\"");
+            if (end != NULL) {
+                *end = '\0'; // Terminate the URL string
+                strcpy(postURL, start);
+                downloadFile(postURL);
+            }
+        }
     }
+    pclose(apiOutput);
 
-    return CURLE_FAILED_INIT;
-}
+    // Create a folder with the same name as the search query and move downloaded files into it
+    char folderName[MAX_URL_LENGTH];
+    sprintf(folderName, "%s", searchQuery);
+    mkdir(folderName, 0777); // Create folder with read/write/execute permissions for owner, group, and others
 
-// Function to perform a search and download posts
-void searchAndDownloadPosts(const char *query) {
-    CURLcode res;
-    struct MemoryStruct chunk;
-    chunk.memory = malloc(1); // Will be grown as needed by realloc
-    chunk.size = 0;           // No data at this point
+    // Move downloaded files into the folder
+    system("mv *.jpg *.png *.gif *.jpeg *.webp *.mp4 *.webm *.swf *.zip *.rar *.bmp *.txt *.pdf *.doc *.docx *.ppt *.pptx *.psd *.ai *.fla *.mp3 *.ogg *.wav *.midi *.swf *.svg *.xcf *.7z *.gz *.tgz *.tar *.bz2 *.xz *.lzh *.lha *.ace *.cbr *.cbz *.apk *.deb *.iso *.rpm *.torrent *.flac *.aac *.mkv *.m4a *.m4v *.mov *.bin *.crx *.exe *.jar *.bat *.sh *.ps *.e6x *.partial* *.part* %s/", folderName);
 
-    char apiUrl[500];
-    sprintf(apiUrl, "%s?tags=%s", API_URL, query);
-
-    // Perform the GET request
-    res = performGetRequest(apiUrl, &chunk, NULL);
-    if(res != CURLE_OK) {
-        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-    }
-    else {
-        // Process the response
-        // Here you would parse the JSON response and extract the URLs of the images
-        // Then you can use libcurl again to download each image
-
-        // For demonstration purposes, let's just print the response
-        printf("Response:\n%s\n", chunk.memory);
-    }
-
-    free(chunk.memory);
-}
-
-int main(int argc, char *argv[]) {
-    if(argc < 2) {
-        fprintf(stderr, "Usage: %s <search query>\n", argv[0]);
-        return 1;
-    }
-
-    // Initialize libcurl
-    curl_global_init(CURL_GLOBAL_ALL);
-
-    // Perform search and download posts
-    searchAndDownloadPosts(argv[1]);
-
-    // Cleanup libcurl
-    curl_global_cleanup();
-
+    printf("Download completed!\n");
     return 0;
 }
