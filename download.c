@@ -3,6 +3,12 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef __APPLE__
+#define DOWNLOAD_COMMAND "curl -O"
+#else
+#define DOWNLOAD_COMMAND "wget -P"
+#endif
+
 #define MAX_URL_LENGTH 1024
 
 void create_folder(char *folder_name) {
@@ -11,24 +17,31 @@ void create_folder(char *folder_name) {
     system(command);
 }
 
-void wget_url(char *url, char *folder_name) {
+void download_url(char *url, char *folder_name) {
     char command[MAX_URL_LENGTH + 64];
-    snprintf(command, sizeof(command), "wget -P %s \"%s\"", folder_name, url);
+    snprintf(command, sizeof(command), "%s \"%s\"", DOWNLOAD_COMMAND, url);
     system(command);
 }
 
-void wget_urls_from_file(char *filename) {
+void download_urls_from_file(char *filename) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         fprintf(stderr, "Error: Could not open file %s\n", filename);
         exit(1);
     }
 
-    char folder_name[20];
-    time_t t = time(NULL);
-    struct tm *tm = localtime(&t);
-    strftime(folder_name, sizeof(folder_name), "%Y-%m-%d_%H-%M-%S", tm);
-    create_folder(folder_name);
+    // Extract filename without extension to use as folder name
+    char *filename_without_extension = strrchr(filename, '/');
+    if (filename_without_extension == NULL)
+        filename_without_extension = filename;
+    else
+        filename_without_extension++;
+
+    char *dot = strrchr(filename_without_extension, '.');
+    if (dot != NULL)
+        *dot = '\0';
+
+    create_folder(filename_without_extension);
 
     char url[MAX_URL_LENGTH];
     while (fgets(url, sizeof(url), file) != NULL) {
@@ -38,7 +51,7 @@ void wget_urls_from_file(char *filename) {
             url[len - 1] = '\0';
 
         // Download URL
-        wget_url(url, folder_name);
+        download_url(url, filename_without_extension);
     }
 
     fclose(file);
@@ -50,10 +63,14 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+#ifdef __APPLE__
+    printf("Using curl for downloading on macOS.\n");
+#else
+    printf("Using wget for downloading on non-macOS systems.\n");
+#endif
+
     printf("Compile command: gcc -o downloader %s -std=c11\n", argv[0]);
-    while (1) {
-        wget_urls_from_file(argv[1]);
-    }
+    download_urls_from_file(argv[1]);
 
     return 0;
 }
