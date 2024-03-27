@@ -32,13 +32,16 @@ void download_urls_from_file(char *filename, int home_dir) {
     }
 
     // Extract filename without extension to use as folder name
-    char *filename_without_extension = strrchr(filename, '/');
-    if (filename_without_extension == NULL)
-        filename_without_extension = filename;
-    else
-        filename_without_extension++;
+    char *folder_name;
+    if (!home_dir) {
+        folder_name = strrchr(filename, '/');
+        if (folder_name == NULL)
+            folder_name = filename;
+        else
+            folder_name++;
+    }
 
-    char *dot = strrchr(filename_without_extension, '.');
+    char *dot = strrchr(folder_name, '.');
     if (dot != NULL)
         *dot = '\0';
 
@@ -46,17 +49,18 @@ void download_urls_from_file(char *filename, int home_dir) {
 #ifdef __APPLE__
         char *home = getenv("HOME");
         if (home != NULL)
-            snprintf(filename_without_extension, strlen(home) + 1, "%s", home);
+            folder_name = home;
         else {
             fprintf(stderr, "Error: Unable to get home directory.\n");
             exit(1);
         }
 #else
-        snprintf(filename_without_extension, 3, "~");
+        fprintf(stderr, "Error: Home directory option is not supported on this platform.\n");
+        exit(1);
 #endif
     }
 
-    create_folder(filename_without_extension);
+    create_folder(folder_name);
 
     char url[MAX_URL_LENGTH];
     while (fgets(url, sizeof(url), file) != NULL) {
@@ -66,7 +70,7 @@ void download_urls_from_file(char *filename, int home_dir) {
             url[len - 1] = '\0';
 
         // Download URL
-        download_url(url, filename_without_extension);
+        download_url(url, folder_name);
     }
 
     fclose(file);
@@ -84,7 +88,7 @@ int main(int argc, char *argv[]) {
 #ifdef __APPLE__
         printf("Downloading to the home directory.\n");
 #else
-        printf("Home directory option is not supported on this platform.\n");
+        fprintf(stderr, "Error: Home directory option is not supported on this platform.\n");
         return 1;
 #endif
     }
